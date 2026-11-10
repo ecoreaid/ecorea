@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECOREA - Admin Command Center</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .glass-card { background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03); border: 1px solid rgba(226, 232, 240, 0.8); overflow: hidden; }
+        #reader, #reader-auth { width: 100%; border-radius: 12px; overflow: hidden; border: none !important; }
+        #reader video, #reader-auth video { object-fit: cover; border-radius: 12px; }
+        #reader__dashboard_section_csr span, #reader__dashboard_section_swaplink,
+        #reader-auth__dashboard_section_csr span, #reader-auth__dashboard_section_swaplink { display: none !important; } 
+        .terminal-container { background: #0f172a; font-family: 'Courier New', monospace; font-size: 13px; }
+        .log-entry { padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .log-time { color: #64748b; font-size: 11px; margin-right: 8px; }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <nav class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-3">
+                    <div class="bg-blue-600 p-2 rounded-lg text-white"><i class="fa-solid fa-leaf text-xl"></i></div>
+                    <div>
+                        <h1 class="text-xl font-bold text-slate-800 leading-tight">ECOREA</h1>
+                        <p class="text-xs text-slate-500 font-medium tracking-wide uppercase">Admin Command Center</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div id="mqtt-status" class="flex items-center gap-2 bg-slate-100 px-4 py-2 rounded-full border border-slate-200">
+                        <div class="w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                        <span class="text-sm font-semibold text-slate-600">Menghubungkan...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-grow p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full flex flex-col gap-6">
+        
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl p-6 shadow-lg flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h2 class="text-lg font-bold flex items-center gap-2"><i class="fa-solid fa-satellite-dish animate-pulse"></i> Live RFID Detector</h2>
+                <p class="text-blue-100 text-sm mt-1">Tempelkan kartu ke perangkat ESP32 untuk mendeteksi nomor UID secara instan.</p>
+            </div>
+            <div class="bg-white/10 backdrop-blur-md px-6 py-3 rounded-xl border border-white/20 text-center">
+                <span class="text-xs text-blue-200 uppercase tracking-wider block">UID Terdeteksi Terakhir:</span>
+                <span id="live-scanned-rfid" class="text-2xl font-mono font-bold tracking-widest text-amber-300">MENUNGGU TAP...</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="glass-card p-6 relative overflow-hidden">
+                <div class="absolute -right-6 -top-6 text-blue-50"><i class="fa-solid fa-users text-8xl"></i></div>
+                <div class="relative z-10">
+                    <p class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Anggota</p>
+                    <h2 class="text-4xl font-bold text-slate-800" id="tot-anggota">0</h2>
+                </div>
+            </div>
+            <div class="glass-card p-6 relative overflow-hidden">
+                <div class="absolute -right-6 -top-6 text-emerald-50"><i class="fa-solid fa-weight-hanging text-8xl"></i></div>
+                <div class="relative z-10">
+                    <p class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Akumulasi Berat</p>
+                    <div class="flex items-baseline gap-1">
+                        <h2 class="text-4xl font-bold text-emerald-600" id="tot-sampah">0</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="glass-card p-6 relative overflow-hidden">
+                <div class="absolute -right-6 -top-6 text-amber-50"><i class="fa-solid fa-coins text-8xl"></i></div>
+                <div class="relative z-10">
+                    <p class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Poin & Saldo</p>
+                    <h2 class="text-4xl font-bold text-amber-500" id="tot-poin">0</h2>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <div class="lg:col-span-4 flex flex-col gap-6">
+                <!-- MENU TAMBAH KARTU RFID BARU (DENGAN AUTO-FILL DARI ALAT) -->
+                <div class="glass-card p-6 border-t-4 border-t-emerald-500">
+                    <h3 class="text-sm font-semibold text-slate-700 uppercase mb-2 flex items-center gap-2">
+                        <i class="fa-solid fa-id-card text-emerald-500"></i> Tambah Kartu RFID Baru
+                    </h3>
+                    <p class="text-xs text-slate-500 mb-4">Tap kartu fisik pada alat ESP32 atau ketik manual UID di bawah ini.</p>
+                    
+                    <!-- KOTAK NOTIFIKASI KARTU BARU DITAP -->
+                    <div id="card-tap-alert" class="hidden bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4 text-left">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Kartu Baru Terdeteksi:</span>
+                                <span id="text-tap-detected" class="text-sm font-mono font-bold text-slate-800">-</span>
+                            </div>
+                            <button type="button" onclick="gunakanUidTap()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition-colors">
+                                Gunakan UID Ini
+                            </button>
+                        </div>
+                    </div>
+
+                    <form onsubmit="tambahKartuBaru(event)" class="space-y-3">
+                        <div>
+                            <input type="text" id="input-uid-rfid" required placeholder="Contoh: A1B2C3D4" class="w-full px-4 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-sm font-mono uppercase focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-lg text-sm shadow transition-colors flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-plus"></i> Simpan ke Database Master
+                        </button>
+                    </form>
+                </div>
+
+                <div class="glass-card p-6 text-center border-t-4 border-t-blue-500">
+                    <h3 class="text-sm font-semibold text-slate-500 uppercase mb-4 flex justify-center items-center gap-2">
+                        <i class="fa-solid fa-scale-unbalanced text-blue-500"></i> Timbangan Alat (Live)
+                    </h3>
+                    <div class="bg-slate-50 rounded-xl p-4 border border-slate-100 shadow-inner">
+                        <div class="text-5xl font-bold text-slate-800 font-mono flex justify-center items-baseline gap-2">
+                            <span id="live-berat-val">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-sm font-semibold text-slate-500 uppercase"><i class="fa-solid fa-qrcode text-slate-400 mr-2"></i> Scan QR</h3>
+                    </div>
+                    <div class="bg-slate-100 p-2 rounded-xl mb-4"><div id="reader"></div></div>
+                    <div id="scanner-info" class="bg-blue-50 text-blue-700 p-3 rounded-lg text-sm font-medium flex items-center gap-3">
+                        <i class="fa-solid fa-circle-info text-blue-500"></i>
+                        <span id="scanner-text">Siap memindai QR Code...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-4 glass-card p-0 flex flex-col h-[650px]">
+                <div class="p-5 border-b border-slate-100 bg-white flex justify-between items-center">
+                    <h3 class="text-sm font-semibold text-slate-700 uppercase"><i class="fa-solid fa-database text-slate-400 mr-2"></i> Kontrol Anggota</h3>
+                </div>
+                <div class="overflow-y-auto flex-grow">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                            <tr>
+                                <th class="p-4 text-xs font-semibold text-slate-500 uppercase">Nama & Kartu RFID</th>
+                                <th class="p-4 text-xs font-semibold text-slate-500 uppercase text-right">Statistik</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabel-anggota" class="divide-y divide-slate-100 text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="lg:col-span-4 glass-card p-0 bg-slate-900 flex flex-col h-[650px]">
+                <div class="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900">
+                    <h3 class="text-sm font-semibold text-slate-300 uppercase"><i class="fa-solid fa-terminal text-emerald-400 mr-2"></i> System Log</h3>
+                </div>
+                <div class="p-4 overflow-y-auto flex-grow terminal-container text-slate-300" id="log-box"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- MODAL POPUP SCANNER VERIFIKASI QR -->
+    <div id="modal-scan-auth" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 text-center">
+            <h3 class="text-base font-bold text-slate-800 mb-1">Verifikasi Autentikasi</h3>
+            <p class="text-xs text-slate-500 mb-4" id="modal-scan-title">Arahkan QR Code user ke kamera untuk konfirmasi.</p>
+            
+            <div class="bg-slate-100 p-2 rounded-xl mb-4"><div id="reader-auth"></div></div>
+
+            <button onclick="tutupModalScanAuth()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-lg transition-colors text-sm">Batal</button>
+        </div>
+    </div>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyDEm3ikmIlH3VWkdXZuD0uqPEYgu7Q1LNM",
+        authDomain: "waste-354ee.firebaseapp.com",
+        databaseURL: "https://waste-354ee-default-rtdb.firebaseio.com",
+        projectId: "waste-354ee",
+        storageBucket: "waste-354ee.firebasestorage.app",
+        messagingSenderId: "649175136385",
+        appId: "1:649175136385:web:d47a336b56ff34c4263580",
+        measurementId: "G-8KV1TLM9WC"
+    };
+    
+    if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+    const db = firebase.database();
+    
+    let mqttClient = null;
+    let bebanLiveKg = 0.00; 
+    let isProcessingQR = false;   
+    let authScannerObj = null;
+    let latestDetectedRfid = "";
+
+    window.onload = () => {
+        pantauDatabase();
+        mulaiLayananMQTT();
+        inisialisasiScannerAuto();
+        tambahLog("System Kernel Initialized (Admin Auto-Fill RFID Ready).", "success");
+    };
+
+    window.gunakanUidTap = function() {
+        if (!latestDetectedRfid) return;
+        document.getElementById('input-uid-rfid').value = latestDetectedRfid;
+        document.getElementById('card-tap-alert').classList.add('hidden');
+        tambahLog(`[AUTO-FILL] UID ${latestDetectedRfid} dimasukkan ke form input.`, "success");
+    }
+
+    window.tambahKartuBaru = function(event) {
+        event.preventDefault();
+        const inputField = document.getElementById('input-uid-rfid');
+        const uidVal = inputField.value.trim().toUpperCase();
+
+        if (!uidVal) return;
+
+        db.ref('master_kartu/' + uidVal).set({
+            uid: uidVal,
+            terdaftar_pada: Date.now()
+        }).then(() => {
+            tambahLog(`[ADMIN-ADD] Kartu RFID baru ditambahkan: ${uidVal}`, "success");
+            alert(`✅ Kartu RFID ${uidVal} berhasil disimpan ke database master!`);
+            inputField.value = "";
+            document.getElementById('card-tap-alert').classList.add('hidden');
+        }).catch(e => {
+            alert("Gagal menambahkan kartu: " + e.message);
+        });
+    }
+
+    function inisialisasiScannerAuto() {
+        const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250}, aspectRatio: 1.0 });
+        html5QrcodeScanner.render((decodedUID) => {
+            if (isProcessingQR) return;
+            if (bebanLiveKg <= 0) {
+                InfoScanner("Beban 0. Taruh sampah dulu!", "warning");
+                return;
+            }
+            isProcessingQR = true; 
+            const beratKgScan = bebanLiveKg; 
+            const gramScan = Math.round(beratKgScan * 1000);
+            const poinDidapat = gramScan; 
+
+            tambahLog(`[QR-SCAN] Memproses UID: ${decodedUID.substring(0,8)}... (${gramScan}g)`);
+            InfoScanner("Memproses transaksi...", "loading");
+
+            db.ref('users/' + decodedUID).once('value').then((snap) => {
+                if (snap.exists()) {
+                    const dataUser = snap.val();
+                    db.ref('users/' + decodedUID).update({
+                        total_berat_kg: (dataUser.total_berat_kg || 0) + beratKgScan,
+                        saldo_poin: (dataUser.saldo_poin || 0) + poinDidapat
+                    });
+                    db.ref('transaksi/' + decodedUID).push({
+                        berat_kg: beratKgScan, poin: poinDidapat, timestamp: Date.now(), metode: "QR_AUTO"
+                    });
+                    tambahLog(`[SUKSES] ${dataUser.nama} (+${poinDidapat} Pts / Rp${poinDidapat})`, "success");
+                    InfoScanner(`Berhasil! ${dataUser.nama} (+${poinDidapat} Pts)`, "success");
+                } else {
+                    tambahLog(`[GAGAL] QR Code tidak dikenali.`, "error");
+                    InfoScanner(`QR Code Tidak Valid!`, "error");
+                }
+            }).catch(e => { tambahLog(`[SYS_ERR] Gagal konek DB.`, "error"); })
+            .finally(() => {
+                setTimeout(() => { isProcessingQR = false; InfoScanner("Siap memindai QR Code...", "normal"); }, 3000);
+            });
+        }, (error) => {}); 
+    }
+
+    function InfoScanner(pesan, status = "normal") {
+        document.getElementById('scanner-text').innerText = pesan;
+        const divInfo = document.getElementById('scanner-info');
+        if(status === "loading") divInfo.style.backgroundColor = "#eef2ff"; 
+        else if(status === "success") divInfo.style.backgroundColor = "#d1fae5"; 
+        else if(status === "warning") divInfo.style.backgroundColor = "#ffedd5"; 
+        else if(status === "error") divInfo.style.backgroundColor = "#fee2e2"; 
+        else divInfo.style.backgroundColor = "#eff6ff"; 
+    }
+
+    function updateMQTTBadge(status) {
+        const badge = document.getElementById('mqtt-status');
+        if (status === 'online') {
+            badge.className = "flex items-center gap-2 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-200 transition-colors";
+            badge.innerHTML = `<div class="w-2.5 h-2.5 rounded-full bg-emerald-500"></div><span class="text-sm font-semibold text-emerald-700">Online & Siap</span>`;
+        } else {
+            badge.className = "flex items-center gap-2 bg-rose-50 px-4 py-2 rounded-full border border-rose-200 transition-colors";
+            badge.innerHTML = `<div class="w-2.5 h-2.5 rounded-full bg-rose-500"></div><span class="text-sm font-semibold text-rose-700">Terputus</span>`;
+        }
+    }
+
+    function mulaiLayananMQTT() {
+        mqttClient = new Paho.MQTT.Client("broker.hivemq.com", 8000, "FIZ_Admin_" + Math.random().toString(16).substr(2, 8));
+        
+        mqttClient.onConnectionLost = () => { 
+            updateMQTTBadge('offline'); 
+            setTimeout(mulaiLayananMQTT, 5000); 
+        };
+
+        mqttClient.onMessageArrived = (message) => {
+            try {
+                const payload = JSON.parse(message.payloadString);
+                bebanLiveKg = parseFloat(payload.berat_kg);
+                
+                document.getElementById('live-berat-val').innerText = bebanLiveKg >= 1 ? bebanLiveKg.toFixed(2) : Math.round(bebanLiveKg * 1000);
+                
+                if (payload.uid_rfid && payload.uid_rfid.length > 3) {
+                    const rfidTag = payload.uid_rfid.trim().toUpperCase();
+                    document.getElementById('live-scanned-rfid').innerText = rfidTag;
+
+                    // Tangkap untuk kotak rekomendasi input cepat
+                    latestDetectedRfid = rfidTag;
+                    document.getElementById('text-tap-detected').innerText = rfidTag;
+                    document.getElementById('card-tap-alert').classList.remove('hidden');
+
+                    if (bebanLiveKg > 0) {
+                        prosesOtomatisRFID(rfidTag, bebanLiveKg);
+                    }
+                }
+            } catch(e) {}
+        };
+        
+        mqttClient.connect({ 
+            onSuccess: () => { updateMQTTBadge('online'); mqttClient.subscribe("fizgroup/waste/data"); },
+            onFailure: () => { updateMQTTBadge('offline'); }
+        });
+    }
+
+    let isProcessingRFID = false; 
+    function prosesOtomatisRFID(rfid_tag, beratKg) {
+        if (isProcessingRFID) return;
+        isProcessingRFID = true;
+        tambahLog(`[RFID-TAP] Mendeteksi Kartu: ${rfid_tag}`);
+
+        db.ref('users').orderByChild('rfid_uid').equalTo(rfid_tag).once('value').then((snapshot) => {
+            if (snapshot.exists()) {
+                snapshot.forEach((childSnap) => {
+                    const fuid = childSnap.key; 
+                    const data = childSnap.val();
+                    const gramVal = Math.round(beratKg * 1000);
+                    const poin = gramVal; 
+
+                    db.ref('users/' + fuid).update({
+                        total_berat_kg: (data.total_berat_kg || 0) + beratKg,
+                        saldo_poin: (data.saldo_poin || 0) + poin
+                    });
+                    db.ref('transaksi/' + fuid).push({
+                        berat_kg: beratKg, poin: poin, timestamp: Date.now(), metode: "RFID_AUTO"
+                    });
+                    tambahLog(`[SUKSES] RFID ${data.nama} (+${poin} Pts / Rp${poin})`, "success");
+                });
+            } else {
+                tambahLog(`[GAGAL] Kartu RFID (${rfid_tag}) belum didaftarkan ke user.`, "warning");
+            }
+        });
+        setTimeout(() => { isProcessingRFID = false; }, 4000); 
+    }
+
+    function bukaModalAutentikasi(targetFuid, keterangan, callbackBerhasil) {
+        document.getElementById('modal-scan-title').innerText = `Scan QR Code user untuk ${keterangan}`;
+        document.getElementById('modal-scan-auth').classList.remove('hidden');
+
+        if (authScannerObj) { authScannerObj.clear().catch(e => {}); }
+
+        authScannerObj = new Html5QrcodeScanner("reader-auth", { fps: 10, qrbox: {width: 200, height: 200}, aspectRatio: 1.0 });
+        authScannerObj.render((scannedUid) => {
+            if (scannedUid.trim() === targetFuid) {
+                tutupModalScanAuth();
+                callbackBerhasil();
+            } else {
+                alert("❌ QR Code tidak cocok dengan user ini!");
+            }
+        }, (error) => {});
+    }
+
+    window.tutupModalScanAuth = function() {
+        if (authScannerObj) { authScannerObj.clear().catch(e => {}); authScannerObj = null; }
+        document.getElementById('modal-scan-auth').classList.add('hidden');
+    }
+
+    window.editAnggotaAdmin = function(fuid, namaLama, rfidLama) {
+        bukaModalAutentikasi(fuid, "mengedit data anggota", () => {
+            let namaBaru = prompt("Ubah Nama Anggota:", namaLama);
+            if (namaBaru === null) return;
+            let rfidBaru = prompt("Ubah Nomor UID RFID:", rfidLama || "");
+            if (rfidBaru === null) return;
+
+            db.ref('users/' + fuid).update({
+                nama: namaBaru.trim(),
+                rfid_uid: rfidBaru.trim().toUpperCase()
+            }).then(() => {
+                tambahLog(`[ADMIN-EDIT] Data ${namaBaru} diperbarui.`, "success");
+                alert("Perubahan berhasil disimpan!");
+            });
+        });
+    }
+
+    window.resetKartuAdmin = function(fuid, namaUser) {
+        bukaModalAutentikasi(fuid, `mereset kartu RFID ${namaUser}`, () => {
+            db.ref('users/' + fuid).update({ rfid_uid: "" }).then(() => {
+                tambahLog(`[RESET-KARTU] Kartu RFID ${namaUser} dilepas.`, "warning");
+                alert("Kartu berhasil di-reset.");
+            });
+        });
+    }
+
+    window.hapusAnggotaAdmin = function(fuid, namaUser) {
+        bukaModalAutentikasi(fuid, `menghapus akun ${namaUser}`, () => {
+            Promise.all([
+                db.ref('users/' + fuid).remove(),
+                db.ref('transaksi/' + fuid).remove()
+            ]).then(() => {
+                tambahLog(`[ADMIN-DELETE] Anggota ${namaUser} dihapus.`, "error");
+                alert("Akun berhasil dihapus.");
+            });
+        });
+    }
+
+    function pantauDatabase() {
+        db.ref('users').on('value', (snapshot) => {
+            let tAnggota = 0, tSampahKg = 0, tPoin = 0;
+            const tbody = document.getElementById('tabel-anggota');
+            tbody.innerHTML = "";
+            
+            if (snapshot.exists()) {
+                snapshot.forEach((childSnap) => {
+                    const user = childSnap.val();
+                    const fuid = childSnap.key;
+                    if (user.role !== 'admin') {
+                        tAnggota++; 
+                        tSampahKg += (user.total_berat_kg || 0); 
+                        tPoin += (user.saldo_poin || 0);
+                        
+                        let rfidDisplay = user.rfid_uid 
+                            ? `<span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-mono font-bold">${user.rfid_uid}</span> <button onclick="resetKartuAdmin('${fuid}', '${user.nama}')" class="text-rose-500 hover:text-rose-700 text-xs ml-1" title="Reset Kartu"><i class="fa-solid fa-rotate-left"></i></button>` 
+                            : `<span class="text-xs text-rose-500 italic">Belum ada kartu</span>`;
+
+                        let beratUserKg = user.total_berat_kg || 0;
+                        let tampilBeratUser = beratUserKg >= 1 ? beratUserKg.toFixed(2) : Math.round(beratUserKg * 1000);
+
+                        tbody.innerHTML += `
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="p-4">
+                                    <div class="font-semibold text-slate-800">${user.nama}</div>
+                                    <div class="mt-1 flex items-center">${rfidDisplay}</div>
+                                    <div class="mt-2 flex gap-1.5">
+                                        <button onclick="editAnggotaAdmin('${fuid}', '${user.nama}', '${user.rfid_uid || ''}')" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded font-semibold transition-colors">
+                                            <i class="fa-solid fa-pen-to-square mr-1"></i> Edit
+                                        </button>
+                                        <button onclick="hapusAnggotaAdmin('${fuid}', '${user.nama}')" class="text-xs bg-rose-50 hover:bg-rose-100 text-rose-600 px-2 py-1 rounded font-semibold transition-colors">
+                                            <i class="fa-solid fa-trash mr-1"></i> Hapus
+                                        </button>
+                                    </div>
+                                </td>
+                                <td class="p-4 text-right align-top">
+                                    <div class="font-bold text-emerald-600">${tampilBeratUser}</div>
+                                    <div class="text-xs font-semibold text-amber-500 mt-0.5">${user.saldo_poin || 0} Pts (Rp${user.saldo_poin || 0})</div>
+                                </td>
+                            </tr>
+                        `;
+                    }
+                });
+                document.getElementById('tot-anggota').innerText = tAnggota;
+                document.getElementById('tot-sampah').innerText = tSampahKg >= 1 ? tSampahKg.toFixed(2) : Math.round(tSampahKg * 1000);
+                document.getElementById('tot-poin').innerText = tPoin + " Pts (Rp" + tPoin + ")";
+            }
+        });
+    }
+
+    let lastLogTime = 0;
+    function tambahLog(pesan, tipe = "normal") {
+        const sekarang = Date.now();
+        if (sekarang - lastLogTime < 400) return; 
+        lastLogTime = sekarang;
+
+        const box = document.getElementById('log-box');
+        const waktu = new Date().toLocaleTimeString('id-ID', {hour12:false});
+        let colorClass = "text-slate-300";
+        if (tipe === "success") colorClass = "text-emerald-400 font-semibold";
+        if (tipe === "warning") colorClass = "text-amber-300";
+        if (tipe === "error") colorClass = "text-rose-400 font-semibold";
+
+        box.innerHTML += `<div class="log-entry flex items-start"><span class="log-time">[${waktu}]</span><span class="${colorClass}">${pesan}</span></div>`;
+        
+        const entries = box.getElementsByClassName('log-entry');
+        if (entries.length > 50) { box.removeChild(entries[0]); }
+        box.scrollTop = box.scrollHeight;
+    }
+</script>
+</body>
+</html>

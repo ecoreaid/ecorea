@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Anggota - ECOREA</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
+        .glass-card { background: white; border-radius: 16px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05); border: 1px solid rgba(226, 232, 240, 0.8); }
+        #qrcode img { margin: 0 auto; border-radius: 12px; padding: 15px; background: white; border: 2px dashed #cbd5e1; }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex items-center justify-center p-4">
+
+    <!-- LOGIN & REGISTER -->
+    <div id="auth-container" class="w-full max-w-md transition-all duration-300">
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500 text-white mb-4 shadow-lg shadow-emerald-500/30">
+                <i class="fa-solid fa-recycle text-3xl"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-slate-800">ECOREA Member</h1>
+            <p class="text-slate-500 mt-1 text-sm">Smart Waste Management System</p>
+        </div>
+
+        <div class="glass-card p-6 sm:p-8">
+            <div class="flex bg-slate-100 p-1 rounded-lg mb-6">
+                <button id="tab-login" class="flex-1 py-2 text-sm font-semibold rounded-md bg-white text-emerald-600 shadow-sm transition-all">Login</button>
+                <button id="tab-register" class="flex-1 py-2 text-sm font-semibold rounded-md text-slate-500 hover:text-slate-700 transition-all">Daftar Baru</button>
+            </div>
+
+            <form id="auth-form" onsubmit="return false;">
+                <div id="register-fields" class="hidden space-y-4 mb-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Nama Lengkap</label>
+                        <input type="text" id="nama" class="w-full px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-emerald-500" placeholder="Nama Anda">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Pilih Kartu RFID (Disiapkan oleh Admin)</label>
+                        <select id="pilih-rfid" class="w-full px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-emerald-500">
+                            <option value="">-- Memuat daftar kartu dari Admin --</option>
+                        </select>
+                        <p class="text-[10px] text-slate-400 mt-1">Kartu yang telah ditambahkan oleh Admin di command center akan muncul di sini.</p>
+                    </div>
+                </div>
+
+                <div class="space-y-4 mb-6">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Email</label>
+                        <input type="email" id="email" required class="w-full px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-emerald-500" placeholder="email@anda.com">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Password</label>
+                        <input type="password" id="password" required class="w-full px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-emerald-500" placeholder="••••••••">
+                    </div>
+                </div>
+
+                <button id="btn-submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg transition-colors shadow-md shadow-emerald-500/30">
+                    Masuk ke Sistem
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard-container" class="w-full max-w-md hidden transition-all duration-300">
+        <div class="flex items-center justify-between mb-6 px-1">
+            <div>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Selamat datang,</p>
+                <h2 class="text-xl font-bold text-slate-800" id="user-nama">Memuat...</h2>
+                <p class="text-[11px] font-mono text-slate-400 mt-0.5">Auth UID: <span id="user-auth-uid" class="select-all font-bold text-slate-600">-</span></p>
+            </div>
+            <button id="btn-logout" class="bg-rose-100 text-rose-600 hover:bg-rose-200 p-2 px-4 rounded-lg font-semibold text-sm transition-colors">
+                Keluar <i class="fa-solid fa-arrow-right-from-bracket ml-1"></i>
+            </button>
+        </div>
+
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 flex items-center justify-between">
+            <div>
+                <span class="text-xs font-bold text-blue-600 uppercase tracking-wider block">Kartu RFID Fisik:</span>
+                <span id="info-rfid-card" class="text-sm font-mono font-bold text-slate-700">-</span>
+            </div>
+            <div id="status-kartu-badge" class="text-xs px-3 py-1 rounded-full font-semibold bg-amber-100 text-amber-700">Menunggu Admin</div>
+        </div>
+
+        <div class="glass-card p-6 mb-6 text-center bg-gradient-to-b from-white to-slate-50 border-t-4 border-t-emerald-500">
+            <h3 class="text-sm font-semibold text-slate-600 uppercase tracking-wider mb-4 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-qrcode text-emerald-500 text-lg"></i> Kartu Identitas Digital
+            </h3>
+            <div id="qrcode" class="flex justify-center mb-4"></div>
+            <p class="text-xs text-slate-500 font-medium bg-emerald-50 inline-block px-3 py-1.5 rounded-full border border-emerald-100">
+                Arahkan QR Code ini ke kamera Admin
+            </p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="glass-card p-5 text-center flex flex-col justify-center items-center">
+                <div class="w-8 h-8 rounded-full bg-amber-100 text-amber-500 flex items-center justify-center mb-2"><i class="fa-solid fa-coins"></i></div>
+                <p class="text-[11px] font-bold text-slate-400 uppercase mb-1">Saldo Poin & Rupiah</p>
+                <h3 class="text-lg font-bold text-amber-500 mb-2" id="user-poin">0</h3>
+                <button onclick="bukaModalReward()" class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition-colors flex items-center gap-1">
+                    <i class="fa-solid fa-gift"></i> Tukar Reward
+                </button>
+            </div>
+            <div class="glass-card p-5 text-center flex flex-col justify-center items-center">
+                <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center mb-2"><i class="fa-solid fa-weight-hanging"></i></div>
+                <p class="text-[11px] font-bold text-slate-400 uppercase mb-1">Total Setoran</p>
+                <h3 class="text-2xl font-bold text-blue-600" id="user-berat">0</h3>
+            </div>
+        </div>
+
+        <div class="glass-card overflow-hidden">
+            <div class="p-4 border-b border-slate-100 bg-slate-50">
+                <h3 class="text-sm font-semibold text-slate-700 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-slate-400"></i> Riwayat Penyetoran & Penukaran</h3>
+            </div>
+            <div class="max-h-64 overflow-y-auto p-0">
+                <table class="w-full text-left text-sm">
+                    <tbody id="table-history" class="divide-y divide-slate-100">
+                        <tr><td class="p-6 text-center text-slate-400">Memuat data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL KATALOG REWARD -->
+    <div id="modal-reward" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-4 border-b pb-3">
+                <h3 class="font-bold text-slate-800 text-base flex items-center gap-2">
+                    <i class="fa-solid fa-gift text-amber-500"></i> Katalog Penukaran Reward
+                </h3>
+                <button onclick="tutupModalReward()" class="text-slate-400 hover:text-slate-600 text-lg font-bold">&times;</button>
+            </div>
+            
+            <p class="text-xs text-slate-500 mb-4">Pilih hadiah impian Anda sesuai dengan saldo poin yang Anda miliki saat ini.</p>
+
+            <div class="overflow-y-auto flex-grow space-y-3 pr-1">
+                <div class="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <div>
+                        <h4 class="font-semibold text-slate-800 text-sm">Beras Premium (5 Kg)</h4>
+                        <p class="text-xs text-amber-600 font-bold mt-0.5">80.000 Pts / Rp80.000</p>
+                    </div>
+                    <button onclick="tukarReward('Beras Premium (5 Kg)', 80000)" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow transition-colors">Tukar</button>
+                </div>
+                <div class="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <div>
+                        <h4 class="font-semibold text-slate-800 text-sm">Pulsa Seluler (Rp5.000)</h4>
+                        <p class="text-xs text-amber-600 font-bold mt-0.5">5.000 Pts / Rp5.000</p>
+                    </div>
+                    <button onclick="tukarReward('Pulsa Seluler (Rp5.000)', 5000)" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow transition-colors">Tukar</button>
+                </div>
+                <div class="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <div>
+                        <h4 class="font-semibold text-slate-800 text-sm">Pulsa Seluler (Rp10.000)</h4>
+                        <p class="text-xs text-amber-600 font-bold mt-0.5">10.000 Pts / Rp10.000</p>
+                    </div>
+                    <button onclick="tukarReward('Pulsa Seluler (Rp10.000)', 10000)" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow transition-colors">Tukar</button>
+                </div>
+                <div class="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <div>
+                        <h4 class="font-semibold text-slate-800 text-sm">Minyak Makan (1 Liter)</h4>
+                        <p class="text-xs text-amber-600 font-bold mt-0.5">41.000 Pts / Rp41.000</p>
+                    </div>
+                    <button onclick="tukarReward('Minyak Makan (1 Liter)', 41000)" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow transition-colors">Tukar</button>
+                </div>
+                <div class="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <div>
+                        <h4 class="font-semibold text-slate-800 text-sm">Paket Alat Tulis (Pensil, Penghapus, Penggaris)</h4>
+                        <p class="text-xs text-amber-600 font-bold mt-0.5">15.000 Pts / Rp15.000</p>
+                    </div>
+                    <button onclick="tukarReward('Paket Alat Tulis', 15000)" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow transition-colors">Tukar</button>
+                </div>
+                <div class="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <div>
+                        <h4 class="font-semibold text-slate-800 text-sm">Buku Tulis (Isi 5 Buku)</h4>
+                        <p class="text-xs text-amber-600 font-bold mt-0.5">40.000 Pts / Rp40.000</p>
+                    </div>
+                    <button onclick="tukarReward('Buku Tulis (Isi 5 Buku)', 40000)" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow transition-colors">Tukar</button>
+                </div>
+            </div>
+
+            <button onclick="tutupModalReward()" class="w-full mt-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-lg transition-colors text-sm">Tutup</button>
+        </div>
+    </div>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyDEm3ikmIlH3VWkdXZuD0uqPEYgu7Q1LNM",
+        authDomain: "waste-354ee.firebaseapp.com",
+        databaseURL: "https://waste-354ee-default-rtdb.firebaseio.com",
+        projectId: "waste-354ee",
+        storageBucket: "waste-354ee.firebasestorage.app",
+        messagingSenderId: "649175136385",
+        appId: "1:649175136385:web:d47a336b56ff34c4263580",
+        measurementId: "G-8KV1TLM9WC"
+    };
+
+    if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+    const auth = firebase.auth();
+    const db = firebase.database();
+    
+    let qrcodeObj = null;
+    let isLoginMode = true;
+    let currentUserId = null;
+    let saldoPoinSekarang = 0;
+
+    const tabLogin = document.getElementById('tab-login');
+    const tabReg = document.getElementById('tab-register');
+    const regFields = document.getElementById('register-fields');
+    const btnSubmit = document.getElementById('btn-submit');
+
+    function muatDropdownKartuMaster() {
+        const selectElem = document.getElementById('pilih-rfid');
+        selectElem.innerHTML = '<option value="">Memeriksa ketersediaan kartu dari Admin...</option>';
+
+        // Membaca dari path master_kartu yang diinput oleh Admin
+        db.ref('master_kartu').on('value', (snapMaster) => {
+            db.ref('users').once('value').then((snapUsers) => {
+                let masterUids = [];
+                if (snapMaster.exists()) {
+                    snapMaster.forEach(c => {
+                        // Mendukung struktur key langsung atau objek berisi property uid
+                        let val = c.val();
+                        let uidStr = (typeof val === 'object' && val !== null && val.uid) ? val.uid : c.key;
+                        if (uidStr) masterUids.push(uidStr.toUpperCase());
+                    });
+                }
+
+                let terpakaiUids = [];
+                if (snapUsers.exists()) {
+                    snapUsers.forEach(c => {
+                        let u = c.val();
+                        if (u.rfid_uid) terpakaiUids.push(u.rfid_uid.toUpperCase());
+                    });
+                }
+
+                let optionsHtml = '<option value="">-- Pilih Kartu yang Disiapkan Admin --</option>';
+                let count = 0;
+
+                masterUids.forEach(uid => {
+                    if (!terpakaiUids.includes(uid)) {
+                        optionsHtml += `<option value="${uid}">Kartu RFID: ${uid}</option>`;
+                        count++;
+                    }
+                });
+
+                if (count === 0) {
+                    optionsHtml = '<option value="">Belum ada kartu disiapkan Admin (Minta Admin input kartu dulu)</option>';
+                }
+                selectElem.innerHTML = optionsHtml;
+            });
+        });
+    }
+
+    function switchMode(mode) {
+        isLoginMode = (mode === 'login');
+        if(isLoginMode) {
+            tabLogin.className = "flex-1 py-2 text-sm font-semibold rounded-md bg-white text-emerald-600 shadow-sm transition-all";
+            tabReg.className = "flex-1 py-2 text-sm font-semibold rounded-md text-slate-500 hover:text-slate-700 transition-all";
+            regFields.classList.add('hidden');
+            btnSubmit.innerText = "Masuk ke Sistem";
+        } else {
+            tabReg.className = "flex-1 py-2 text-sm font-semibold rounded-md bg-white text-emerald-600 shadow-sm transition-all";
+            tabLogin.className = "flex-1 py-2 text-sm font-semibold rounded-md text-slate-500 hover:text-slate-700 transition-all";
+            regFields.classList.remove('hidden');
+            btnSubmit.innerText = "Buat Akun Baru";
+            muatDropdownKartuMaster();
+        }
+    }
+    tabLogin.onclick = () => switchMode('login');
+    tabReg.onclick = () => switchMode('register');
+
+    // Langsung muat dropdown jika halaman dibuka dalam mode register secara default
+    window.onload = () => {
+        muatDropdownKartuMaster();
+    };
+
+    btnSubmit.onclick = () => {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        
+        if(!email || !password) { alert("Isi email dan password!"); return; }
+
+        const btnAsli = btnSubmit.innerText;
+        btnSubmit.innerText = "Memproses...";
+        btnSubmit.disabled = true;
+
+        if(isLoginMode) {
+            auth.signInWithEmailAndPassword(email, password)
+                .catch(e => { alert("Gagal Login: " + e.message); resetBtn(); });
+        } else {
+            const nama = document.getElementById('nama').value || "Anggota FIZ";
+            const selectedRfid = document.getElementById('pilih-rfid').value;
+            
+            auth.createUserWithEmailAndPassword(email, password)
+                .then((cred) => {
+                    return db.ref('users/' + cred.user.uid).set({
+                        nama: nama, email: email, rfid_uid: selectedRfid || "", role: 'member', saldo_poin: 0, total_berat_kg: 0
+                    });
+                })
+                .then(() => alert("Pendaftaran Berhasil!"))
+                .catch(e => { alert("Gagal Daftar: " + e.message); resetBtn(); });
+        }
+        function resetBtn() { btnSubmit.innerText = btnAsli; btnSubmit.disabled = false; }
+    };
+
+    document.getElementById('btn-logout').onclick = () => auth.signOut();
+
+    window.bukaModalReward = function() {
+        document.getElementById('modal-reward').classList.remove('hidden');
+    }
+
+    window.tutupModalReward = function() {
+        document.getElementById('modal-reward').classList.add('hidden');
+    }
+
+    window.tukarReward = function(namaHadiah, hargaPoin) {
+        if (!currentUserId) return;
+
+        if (saldoPoinSekarang < hargaPoin) {
+            alert(`❌ Saldo poin Anda tidak cukup!\nSaldo Anda: ${saldoPoinSekarang} Pts\nDibutuhkan: ${hargaPoin} Pts`);
+            return;
+        }
+
+        if (confirm(`Apakah Anda yakin ingin menukar ${namaHadiah} dengan harga ${hargaPoin} Poin?`)) {
+            const sisaPoinBaru = saldoPoinSekarang - hargaPoin;
+
+            db.ref('users/' + currentUserId).update({
+                saldo_poin: sisaPoinBaru
+            }).then(() => {
+                db.ref('transaksi/' + currentUserId).push({
+                    berat_kg: 0,
+                    poin: -hargaPoin,
+                    keterangan: `Tukar Reward: ${namaHadiah}`,
+                    timestamp: Date.now(),
+                    metode: "REDEEM"
+                });
+                tutupModalReward();
+                alert(`🎉 Berhasil menukar ${namaHadiah}!\nSilakan tunjukkan bukti penukaran ini ke pengurus.`);
+            }).catch(e => {
+                alert("Gagal memproses penukaran: " + e.message);
+            });
+        }
+    }
+
+    auth.onAuthStateChanged((user) => {
+        if (user) {
+            currentUserId = user.uid;
+            document.getElementById('auth-container').classList.add('hidden');
+            document.getElementById('dashboard-container').classList.remove('hidden');
+            
+            document.getElementById('user-auth-uid').innerText = user.uid;
+
+            document.getElementById('qrcode').innerHTML = ""; 
+            qrcodeObj = new QRCode(document.getElementById("qrcode"), {
+                text: user.uid, width: 180, height: 180, colorDark : "#0f172a", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H
+            });
+
+            db.ref('users/' + user.uid).on('value', (snap) => {
+                if(snap.exists()){
+                    const data = snap.val();
+                    saldoPoinSekarang = data.saldo_poin || 0;
+                    document.getElementById('user-nama').innerText = data.nama;
+                    document.getElementById('user-poin').innerText = saldoPoinSekarang + " Pts (Rp" + saldoPoinSekarang + ")";
+                    
+                    let beratVal = data.total_berat_kg || 0;
+                    document.getElementById('user-berat').innerText = beratVal >= 1 ? beratVal.toFixed(2) : Math.round(beratVal * 1000);
+                    
+                    const cardDisplay = document.getElementById('info-rfid-card');
+                    const badge = document.getElementById('status-kartu-badge');
+                    if(data.rfid_uid) {
+                        cardDisplay.innerHTML = `<span class="text-emerald-600 font-mono font-bold">${data.rfid_uid}</span>`;
+                        badge.innerText = "Aktif & Tertaut";
+                        badge.className = "text-xs px-3 py-1 rounded-full font-semibold bg-emerald-100 text-emerald-700";
+                    } else {
+                        cardDisplay.innerHTML = `<span class="text-rose-500 font-normal">Belum memilih kartu</span>`;
+                        badge.innerText = "Belum Ada Kartu";
+                        badge.className = "text-xs px-3 py-1 rounded-full font-semibold bg-amber-100 text-amber-700";
+                    }
+                }
+            });
+
+            db.ref('transaksi/' + user.uid).orderByChild('timestamp').limitToLast(10).on('value', (snap) => {
+                const tbody = document.getElementById('table-history');
+                let rows = "";
+                if(snap.exists()){
+                    snap.forEach((child) => {
+                        const tx = child.val();
+                        const time = new Date(tx.timestamp).toLocaleString('id-ID', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
+                        
+                        if (tx.metode === "REDEEM") {
+                            rows = `
+                                <tr class="hover:bg-slate-50">
+                                    <td class="p-4">
+                                        <div class="font-bold text-slate-700">${tx.keterangan}</div>
+                                        <div class="text-xs text-slate-400 mt-1"><i class="fa-regular fa-calendar mr-1"></i> ${time}</div>
+                                    </td>
+                                    <td class="p-4 text-right"><div class="font-bold text-rose-500">${tx.poin} Pts</div></td>
+                                </tr>
+                            ` + rows;
+                        } else {
+                            let beratTx = tx.berat_kg >= 1 ? tx.berat_kg.toFixed(2) : Math.round(tx.berat_kg * 1000);
+                            rows = `
+                                <tr class="hover:bg-slate-50">
+                                    <td class="p-4">
+                                        <div class="font-bold text-slate-700">${beratTx}</div>
+                                        <div class="text-xs text-slate-400 mt-1"><i class="fa-regular fa-calendar mr-1"></i> ${time}</div>
+                                    </td>
+                                    <td class="p-4 text-right"><div class="font-bold text-emerald-500">+${tx.poin} Pts (Rp${tx.poin})</div></td>
+                                </tr>
+                            ` + rows;
+                        }
+                    });
+                    tbody.innerHTML = rows;
+                } else {
+                    tbody.innerHTML = `<tr><td class="p-6 text-center text-slate-400 text-sm">Belum ada transaksi</td></tr>`;
+                }
+            });
+
+        } else {
+            currentUserId = null;
+            document.getElementById('auth-container').classList.remove('hidden');
+            document.getElementById('dashboard-container').classList.add('hidden');
+            btnSubmit.innerText = "Masuk ke Sistem";
+            btnSubmit.disabled = false;
+        }
+    });
+</script>
+</body>
+</html>

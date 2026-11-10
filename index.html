@@ -33,11 +33,11 @@
             transform: translateY(-6px);
             box-shadow: 0 20px 30px rgba(0, 0, 0, 0.08);
         }
-        /* Custom Styling untuk Logo Image atau Icon Fallback */
         .logo-container img {
             width: 100%;
             height: 100%;
             object-fit: contain;
+            padding: 8px;
         }
     </style>
 </head>
@@ -51,17 +51,10 @@
 
         <!-- HEADER & LOGO AREA -->
         <div class="text-center relative z-10 mb-8">
-            <!-- 
-              PETUNJUK LETAK LOGO:
-              Jika ingin menggunakan gambar logo (misal: logo.png), hapus tag <i class="fa-solid fa-recycle"></i> 
-              di bawah dan aktifkan tag <img> dengan memasukkan path file logo Anda.
-            -->
-            <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white mb-4 shadow-lg shadow-emerald-500/25 logo-container overflow-hidden">
-    <img src="logo.png" alt="Logo ECOREA">
-</div>
-                
-                <!-- ICON DEFAULT (Bisa diganti tag <img> di atas) -->
-                <i class="fa-solid fa-recycle text-4xl"></i>
+            
+            <!-- KOTAK LOGO -->
+            <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white border border-slate-100 text-emerald-600 mb-4 shadow-lg shadow-emerald-500/10 logo-container overflow-hidden">
+                <img src="logo.png" alt="Logo ECOREA">
             </div>
 
             <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold mb-3">

@@ -26,8 +26,8 @@
     <!-- LOGIN & REGISTER -->
     <div id="auth-container" class="w-full max-w-md transition-all duration-300">
         <div class="text-center mb-8">
-            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500 text-white mb-4 shadow-lg shadow-emerald-500/30">
-                <i class="fa-solid fa-recycle text-3xl"></i>
+            <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white shadow-lg shadow-emerald-500/10 border border-emerald-100 mb-4 overflow-hidden p-2">
+                <img src="logo.png" alt="Logo ECOREA" class="w-full h-full object-contain">
             </div>
             <h1 class="text-2xl font-bold text-slate-800">ECOREA Member</h1>
             <p class="text-slate-500 mt-1 text-sm">Smart Waste Management System</p>
@@ -75,12 +75,17 @@
     <!-- DASHBOARD -->
     <div id="dashboard-container" class="w-full max-w-md hidden transition-all duration-300">
         <div class="flex items-center justify-between mb-6 px-1">
-            <div>
-                <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Selamat datang,</p>
-                <h2 class="text-xl font-bold text-slate-800" id="user-nama">Memuat...</h2>
-                <p class="text-[11px] font-mono text-slate-400 mt-0.5">Auth UID: <span id="user-auth-uid" class="select-all font-bold text-slate-600">-</span></p>
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-xl bg-white shadow border border-emerald-100 overflow-hidden p-1.5 flex items-center justify-center">
+                    <img src="logo.png" alt="Logo ECOREA" class="w-full h-full object-contain">
+                </div>
+                <div>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Selamat datang,</p>
+                    <h2 class="text-lg font-bold text-slate-800" id="user-nama">Memuat...</h2>
+                    <p class="text-[10px] font-mono text-slate-400">UID: <span id="user-auth-uid" class="select-all font-bold text-slate-600">-</span></p>
+                </div>
             </div>
-            <button id="btn-logout" class="bg-rose-100 text-rose-600 hover:bg-rose-200 p-2 px-4 rounded-lg font-semibold text-sm transition-colors">
+            <button id="btn-logout" class="bg-rose-100 text-rose-600 hover:bg-rose-200 p-2 px-3 rounded-lg font-semibold text-xs transition-colors">
                 Keluar <i class="fa-solid fa-arrow-right-from-bracket ml-1"></i>
             </button>
         </div>
@@ -224,13 +229,11 @@
         const selectElem = document.getElementById('pilih-rfid');
         selectElem.innerHTML = '<option value="">Memeriksa ketersediaan kartu dari Admin...</option>';
 
-        // Membaca dari path master_kartu yang diinput oleh Admin
         db.ref('master_kartu').on('value', (snapMaster) => {
             db.ref('users').once('value').then((snapUsers) => {
                 let masterUids = [];
                 if (snapMaster.exists()) {
                     snapMaster.forEach(c => {
-                        // Mendukung struktur key langsung atau objek berisi property uid
                         let val = c.val();
                         let uidStr = (typeof val === 'object' && val !== null && val.uid) ? val.uid : c.key;
                         if (uidStr) masterUids.push(uidStr.toUpperCase());
@@ -281,7 +284,6 @@
     tabLogin.onclick = () => switchMode('login');
     tabReg.onclick = () => switchMode('register');
 
-    // Langsung muat dropdown jika halaman dibuka dalam mode register secara default
     window.onload = () => {
         muatDropdownKartuMaster();
     };

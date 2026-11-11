@@ -24,8 +24,7 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .glass-card { background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03); border: 1px solid rgba(226, 232, 240, 0.8); overflow: hidden; }
         
-        /* Styling khusus area kamera scanner agar responsif di GitHub Pages */
-        #reader, #reader-auth { width: 100%; border-radius: 12px; overflow: hidden; border: none !important; background: #0f172a; }
+        #reader, #reader-auth { width: 100%; border-radius: 12px; overflow: hidden; border: none !important; background: #0f172a; min-height: 220px; }
         #reader video, #reader-auth video { object-fit: cover; border-radius: 12px; width: 100% !important; }
         #reader__dashboard_section_csr span, #reader__dashboard_section_swaplink,
         #reader-auth__dashboard_section_csr span, #reader-auth__dashboard_section_swaplink { display: none !important; } 
@@ -150,15 +149,18 @@
                     </div>
                 </div>
 
-                <!-- KAMERA QR SCANNER -->
+                <!-- KAMERA QR SCANNER DENGAN KONTROL MANUAL -->
                 <div class="glass-card p-6">
                     <div class="flex justify-between items-center mb-3">
                         <h3 class="text-sm font-semibold text-slate-500 uppercase"><i class="fa-solid fa-qrcode text-slate-400 mr-2"></i> Scan QR Setoran</h3>
+                        <button onclick="mulaiKameraManual()" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-600 px-2.5 py-1 rounded-md font-semibold transition-colors">
+                            <i class="fa-solid fa-camera mr-1"></i> Aktifkan Kamera
+                        </button>
                     </div>
                     <div class="p-1 rounded-xl mb-3"><div id="reader"></div></div>
                     <div id="scanner-info" class="bg-blue-50 text-blue-700 p-3 rounded-lg text-xs font-medium flex items-center gap-3">
                         <i class="fa-solid fa-circle-info text-blue-500 text-sm"></i>
-                        <span id="scanner-text">Kamera siap memindai QR Code anggota...</span>
+                        <span id="scanner-text">Klik tombol "Aktifkan Kamera" di atas jika belum menyala.</span>
                     </div>
                 </div>
             </div>
@@ -173,7 +175,7 @@
                         <thead class="bg-slate-50 sticky top-0 z-10 shadow-sm">
                             <tr>
                                 <th class="p-4 text-xs font-semibold text-slate-500 uppercase">Nama & Kartu RFID</th>
-                                <th class="p-4 text-xs font-semibold text-slate-500 uppercase text-right">Statistik</th>
+                                <th class="p-4 text-xs font-semibold text-slate-500 uppercase text-right">Statistik (Berat = Poin)</th>
                             </tr>
                         </thead>
                         <tbody id="tabel-anggota" class="divide-y divide-slate-100 text-sm">
@@ -225,19 +227,85 @@
     let isProcessingQR = false;   
     let authScannerObj = null;
     let latestDetectedRfid = "";
-    let mainScannerObj = null;
+    let html5QrCode = null;
 
     window.onload = () => {
         pantauDatabase();
         mulaiLayananMQTT();
-        
-        // Beri jeda 500ms agar elemen DOM siap sepenuhnya sebelum kamera diinisialisasi
-        setTimeout(() => {
-            inisialisasiScannerAuto();
-        }, 500);
-
-        tambahLog("System Kernel Initialized (GitHub Pages Ready).", "success");
+        tambahLog("System Kernel Initialized.", "success");
     };
+
+    window.mulaiKameraManual = function() {
+        InfoScanner("Meminta izin kamera...", "loading");
+        tambahLog("[CAM] Menginisialisasi pemindai QR...");
+
+        if (html5QrCode) {
+            html5QrCode.stop().catch(() => {}).finally(() => { inisialisasiKameraAman(); });
+        } else {
+            inisialisasiKameraAman();
+        }
+    }
+
+    function inisialisasiKameraAman() {
+        const scannerConfig = { fps: 10, qrbox: { width: 220, height: 220 } };
+        
+        html5QrCode = new Html5Qrcode("reader");
+        
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            scannerConfig, 
+            (decodedUID) => {
+                if (isProcessingQR) return;
+                if (bebanLiveKg <= 0) {
+                    InfoScanner("Beban 0 kg. Taruh sampah dulu di timbangan!", "warning");
+                    return;
+                }
+                isProcessingQR = true; 
+                const beratKgScan = bebanLiveKg; 
+                
+                // POIN DISETARAKAN 100% SAMA DENGAN BERAT KG (Nilai Poin = Nilai Berat)
+                const nilaiPoin = beratKgScan;
+
+                tambahLog(`[QR-SCAN] UID: ${decodedUID.substring(0,8)}... (${beratKgScan.toFixed(2)} kg)`);
+                InfoScanner("Memproses transaksi setoran...", "loading");
+
+                db.ref('users/' + decodedUID).once('value').then((snap) => {
+                    if (snap.exists()) {
+                        const dataUser = snap.val();
+                        const beratBaru = (dataUser.total_berat_kg || 0) + beratKgScan;
+                        
+                        db.ref('users/' + decodedUID).update({
+                            total_berat_kg: beratBaru,
+                            saldo_poin: beratBaru // Poin disamakan persis dengan total berat
+                        });
+                        db.ref('transaksi/' + decodedUID).push({
+                            berat_kg: beratKgScan, poin: nilaiPoin, timestamp: Date.now(), metode: "QR_AUTO"
+                        });
+                        tambahLog(`[SUKSES] ${dataUser.nama} (+${nilaiPoin.toFixed(2)} Pts)`, "success");
+                        InfoScanner(`Berhasil! ${dataUser.nama} (+${nilaiPoin.toFixed(2)} Pts)`, "success");
+                    } else {
+                        tambahLog(`[GAGAL] QR Code tidak terdaftar.`, "error");
+                        InfoScanner(`QR Code Tidak Valid!`, "error");
+                    }
+                }).catch(e => { 
+                    tambahLog(`[SYS_ERR] Gagal konek DB.`, "error"); 
+                }).finally(() => {
+                    setTimeout(() => { 
+                        isProcessingQR = false; 
+                        InfoScanner("Kamera aktif & siap memindai...", "normal"); 
+                    }, 3500);
+                });
+            },
+            (errorMessage) => {}
+        ).then(() => {
+            InfoScanner("Kamera aktif & siap memindai...", "success");
+            tambahLog("[CAM] Kamera berhasil diaktifkan.", "success");
+        }).catch(err => {
+            console.error("Gagal start kamera:", err);
+            InfoScanner("Gagal akses kamera. Periksa izin browser!", "error");
+            tambahLog("[CAM-ERR] Izin kamera ditolak atau tidak ada perangkat.", "error");
+        });
+    }
 
     window.gunakanUidTap = function() {
         if (!latestDetectedRfid) return;
@@ -266,61 +334,6 @@
         });
     }
 
-    function inisialisasiScannerAuto() {
-        try {
-            mainScannerObj = new Html5QrcodeScanner("reader", { 
-                fps: 10, 
-                qrbox: { width: 220, height: 220 }, 
-                aspectRatio: 1.0 
-            });
-
-            mainScannerObj.render((decodedUID) => {
-                if (isProcessingQR) return;
-                if (bebanLiveKg <= 0) {
-                    InfoScanner("Beban 0 g. Taruh sampah dulu di timbangan!", "warning");
-                    return;
-                }
-                isProcessingQR = true; 
-                const beratKgScan = bebanLiveKg; 
-                const gramScan = Math.round(beratKgScan * 1000);
-                const poinDidapat = gramScan; 
-
-                tambahLog(`[QR-SCAN] Memproses UID: ${decodedUID.substring(0,8)}... (${gramScan}g)`);
-                InfoScanner("Memproses transaksi setoran...", "loading");
-
-                db.ref('users/' + decodedUID).once('value').then((snap) => {
-                    if (snap.exists()) {
-                        const dataUser = snap.val();
-                        db.ref('users/' + decodedUID).update({
-                            total_berat_kg: (dataUser.total_berat_kg || 0) + beratKgScan,
-                            saldo_poin: (dataUser.saldo_poin || 0) + poinDidapat
-                        });
-                        db.ref('transaksi/' + decodedUID).push({
-                            berat_kg: beratKgScan, poin: poinDidapat, timestamp: Date.now(), metode: "QR_AUTO"
-                        });
-                        tambahLog(`[SUKSES] ${dataUser.nama} (+${poinDidapat} Pts)`, "success");
-                        InfoScanner(`Berhasil! ${dataUser.nama} (+${poinDidapat} Pts)`, "success");
-                    } else {
-                        tambahLog(`[GAGAL] QR Code tidak terdaftar di sistem.`, "error");
-                        InfoScanner(`QR Code Tidak Valid!`, "error");
-                    }
-                }).catch(e => { 
-                    tambahLog(`[SYS_ERR] Gagal konek DB.`, "error"); 
-                }).finally(() => {
-                    setTimeout(() => { 
-                        isProcessingQR = false; 
-                        InfoScanner("Kamera siap memindai QR Code anggota...", "normal"); 
-                    }, 3500);
-                });
-            }, (error) => {
-                // Abaikan error frame scan kontinu agar console bersih
-            });
-        } catch (err) {
-            console.error("Gagal mengaktifkan kamera:", err);
-            tambahLog("[CAM-ERR] Izin kamera diblokir atau browser tidak mendukung.", "error");
-        }
-    }
-
     function InfoScanner(pesan, status = "normal") {
         document.getElementById('scanner-text').innerText = pesan;
         const divInfo = document.getElementById('scanner-info');
@@ -345,7 +358,6 @@
 
     function mulaiLayananMQTT() {
         let clientId = "ECOREA_Admin_" + Math.random().toString(16).substr(2, 8);
-        // Menggunakan port WebSocket Secure (8884) khusus untuk https / github pages
         mqttClient = new Paho.MQTT.Client("broker.hivemq.com", 8884, clientId);
         
         mqttClient.onConnectionLost = (responseObject) => { 
@@ -400,17 +412,18 @@
                 snapshot.forEach((childSnap) => {
                     const fuid = childSnap.key; 
                     const data = childSnap.val();
-                    const gramVal = Math.round(beratKg * 1000);
-                    const poin = gramVal; 
+                    const beratBaru = (data.total_berat_kg || 0) + beratKg;
+                    const nilaiPoin = beratKg;
 
+                    // SALDO POIN DISAMAKAN PERSIS DENGAN TOTAL BERAT
                     db.ref('users/' + fuid).update({
-                        total_berat_kg: (data.total_berat_kg || 0) + beratKg,
-                        saldo_poin: (data.saldo_poin || 0) + poin
+                        total_berat_kg: beratBaru,
+                        saldo_poin: beratBaru
                     });
                     db.ref('transaksi/' + fuid).push({
-                        berat_kg: beratKg, poin: poin, timestamp: Date.now(), metode: "RFID_AUTO"
+                        berat_kg: beratKg, poin: nilaiPoin, timestamp: Date.now(), metode: "RFID_AUTO"
                     });
-                    tambahLog(`[SUKSES] RFID ${data.nama} (+${poin} Pts)`, "success");
+                    tambahLog(`[SUKSES] RFID ${data.nama} (+${nilaiPoin.toFixed(2)} Pts)`, "success");
                 });
             } else {
                 tambahLog(`[WARNING] Kartu RFID (${rfid_tag}) belum ditautkan ke akun user.`, "warning");
@@ -481,7 +494,7 @@
 
     function pantauDatabase() {
         db.ref('users').on('value', (snapshot) => {
-            let tAnggota = 0, tSampahKg = 0, tPoin = 0;
+            let tAnggota = 0, tSampahKg = 0;
             const tbody = document.getElementById('tabel-anggota');
             tbody.innerHTML = "";
             
@@ -491,15 +504,18 @@
                     const fuid = childSnap.key;
                     if (user.role !== 'admin') {
                         tAnggota++; 
-                        tSampahKg += (user.total_berat_kg || 0); 
-                        tPoin += (user.saldo_poin || 0);
+                        let beratUserKg = user.total_berat_kg || 0;
+                        tSampahKg += beratUserKg; 
                         
+                        // KARENA POIN DISET SAMA DENGAN BERAT, NILAINYA 100% IDENTIK
+                        let poinUser = beratUserKg;
+
                         let rfidDisplay = user.rfid_uid 
                             ? `<span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-mono font-bold">${user.rfid_uid}</span> <button onclick="resetKartuAdmin('${fuid}', '${user.nama}')" class="text-rose-500 hover:text-rose-700 text-xs ml-1" title="Reset Kartu"><i class="fa-solid fa-rotate-left"></i></button>` 
                             : `<span class="text-xs text-rose-500 italic">Belum ada kartu</span>`;
 
-                        let beratUserKg = user.total_berat_kg || 0;
                         let tampilBeratUser = beratUserKg >= 1 ? beratUserKg.toFixed(2) : Math.round(beratUserKg * 1000);
+                        let tampilPoinUser = poinUser >= 1 ? poinUser.toFixed(2) : Math.round(poinUser * 1000);
 
                         tbody.innerHTML += `
                             <tr class="hover:bg-slate-50 transition-colors">
@@ -516,16 +532,16 @@
                                     </div>
                                 </td>
                                 <td class="p-4 text-right align-top">
-                                    <div class="font-bold text-emerald-600">${tampilBeratUser}</div>
-                                    <div class="text-xs font-semibold text-amber-500 mt-0.5">${user.saldo_poin || 0} Pts</div>
+                                    <div class="font-bold text-emerald-600">${tampilBeratUser} kg</div>
+                                    <div class="text-xs font-semibold text-amber-500 mt-0.5">${tampilPoinUser} Pts</div>
                                 </td>
                             </tr>
                         `;
                     }
                 });
                 document.getElementById('tot-anggota').innerText = tAnggota;
-                document.getElementById('tot-sampah').innerText = tSampahKg >= 1 ? tSampahKg.toFixed(2) : Math.round(tSampahKg * 1000);
-                document.getElementById('tot-poin').innerText = tPoin + " Pts";
+                document.getElementById('tot-sampah').innerText = (tSampahKg >= 1 ? tSampahKg.toFixed(2) : Math.round(tSampahKg * 1000)) + " kg";
+                document.getElementById('tot-poin').innerText = (tSampahKg >= 1 ? tSampahKg.toFixed(2) : Math.round(tSampahKg * 1000)) + " Pts";
             } else {
                 tbody.innerHTML = `<tr><td class="p-6 text-center text-slate-400 text-xs">Belum ada data anggota</td></tr>`;
             }
@@ -534,9 +550,9 @@
 
     let lastLogTime = 0;
     function tambahLog(pesan, tipe = "normal") {
-        const sekarang = Date.now();
-        if (sekarang - lastLogTime < 300) return; 
-        lastLogTime = sekarang;
+        const sekrang = Date.now();
+        if (sekrang - lastLogTime < 300) return; 
+        lastLogTime = sekrang;
 
         const box = document.getElementById('log-box');
         const waktu = new Date().toLocaleTimeString('id-ID', {hour12:false});

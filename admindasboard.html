@@ -89,15 +89,15 @@
                 <div class="relative z-10">
                     <p class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Akumulasi Berat</p>
                     <div class="flex items-baseline gap-1">
-                        <h2 class="text-4xl font-bold text-emerald-600" id="tot-sampah">0</h2>
+                        <h2 class="text-4xl font-bold text-emerald-600" id="tot-sampah">0 g</h2>
                     </div>
                 </div>
             </div>
             <div class="glass-card p-6 relative overflow-hidden">
                 <div class="absolute -right-6 -top-6 text-amber-50"><i class="fa-solid fa-coins text-8xl"></i></div>
                 <div class="relative z-10">
-                    <p class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Poin & Saldo</p>
-                    <h2 class="text-4xl font-bold text-amber-500" id="tot-poin">0</h2>
+                    <p class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Poin</p>
+                    <h2 class="text-4xl font-bold text-amber-500" id="tot-poin">0 Pts</h2>
                 </div>
             </div>
         </div>
@@ -105,9 +105,8 @@
         <!-- PANEL UTAMA -->
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             
-            <!-- KOLOM KIRI: INPUT RFID & SCANNER KAMERA -->
+            <!-- KOLOM KIRI -->
             <div class="lg:col-span-4 flex flex-col gap-6">
-                
                 <!-- TAMBAH KARTU RFID BARU -->
                 <div class="glass-card p-6 border-t-4 border-t-emerald-500">
                     <h3 class="text-sm font-semibold text-slate-700 uppercase mb-2 flex items-center gap-2">
@@ -144,12 +143,12 @@
                     </h3>
                     <div class="bg-slate-50 rounded-xl p-4 border border-slate-100 shadow-inner">
                         <div class="text-4xl sm:text-5xl font-bold text-slate-800 font-mono flex justify-center items-baseline gap-2">
-                            <span id="live-berat-val">0</span>
+                            <span id="live-berat-val">0</span> <span class="text-sm text-slate-500">g</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- KAMERA QR SCANNER DENGAN KONTROL MANUAL -->
+                <!-- KAMERA QR SCANNER -->
                 <div class="glass-card p-6">
                     <div class="flex justify-between items-center mb-3">
                         <h3 class="text-sm font-semibold text-slate-500 uppercase"><i class="fa-solid fa-qrcode text-slate-400 mr-2"></i> Scan QR Setoran</h3>
@@ -175,7 +174,7 @@
                         <thead class="bg-slate-50 sticky top-0 z-10 shadow-sm">
                             <tr>
                                 <th class="p-4 text-xs font-semibold text-slate-500 uppercase">Nama & Kartu RFID</th>
-                                <th class="p-4 text-xs font-semibold text-slate-500 uppercase text-right">Statistik (Berat = Poin)</th>
+                                <th class="p-4 text-xs font-semibold text-slate-500 uppercase text-right">Statistik</th>
                             </tr>
                         </thead>
                         <tbody id="tabel-anggota" class="divide-y divide-slate-100 text-sm">
@@ -223,7 +222,7 @@
     const db = firebase.database();
     
     let mqttClient = null;
-    let bebanLiveKg = 0.00; 
+    let bebanLiveVal = 0.00; 
     let isProcessingQR = false;   
     let authScannerObj = null;
     let latestDetectedRfid = "";
@@ -256,30 +255,28 @@
             scannerConfig, 
             (decodedUID) => {
                 if (isProcessingQR) return;
-                if (bebanLiveKg <= 0) {
-                    InfoScanner("Beban 0 kg. Taruh sampah dulu di timbangan!", "warning");
+                if (bebanLiveVal <= 0) {
+                    InfoScanner("Beban 0. Taruh sampah dulu di timbangan!", "warning");
                     return;
                 }
                 isProcessingQR = true; 
-                const beratKgScan = bebanLiveKg; 
-                
-                // POIN DISETARAKAN 100% SAMA DENGAN BERAT KG (Nilai Poin = Nilai Berat)
-                const nilaiPoin = beratKgScan;
+                const beratScan = bebanLiveVal; 
+                const nilaiPoin = beratScan;
 
-                tambahLog(`[QR-SCAN] UID: ${decodedUID.substring(0,8)}... (${beratKgScan.toFixed(2)} kg)`);
+                tambahLog(`[QR-SCAN] UID: ${decodedUID.substring(0,8)}... (${beratScan.toFixed(2)} g)`);
                 InfoScanner("Memproses transaksi setoran...", "loading");
 
                 db.ref('users/' + decodedUID).once('value').then((snap) => {
                     if (snap.exists()) {
                         const dataUser = snap.val();
-                        const beratBaru = (dataUser.total_berat_kg || 0) + beratKgScan;
+                        const beratBaru = (dataUser.total_berat_kg || 0) + beratScan;
                         
                         db.ref('users/' + decodedUID).update({
                             total_berat_kg: beratBaru,
-                            saldo_poin: beratBaru // Poin disamakan persis dengan total berat
+                            saldo_poin: beratBaru
                         });
                         db.ref('transaksi/' + decodedUID).push({
-                            berat_kg: beratKgScan, poin: nilaiPoin, timestamp: Date.now(), metode: "QR_AUTO"
+                            berat_kg: beratScan, poin: nilaiPoin, timestamp: Date.now(), metode: "QR_AUTO"
                         });
                         tambahLog(`[SUKSES] ${dataUser.nama} (+${nilaiPoin.toFixed(2)} Pts)`, "success");
                         InfoScanner(`Berhasil! ${dataUser.nama} (+${nilaiPoin.toFixed(2)} Pts)`, "success");
@@ -301,9 +298,7 @@
             InfoScanner("Kamera aktif & siap memindai...", "success");
             tambahLog("[CAM] Kamera berhasil diaktifkan.", "success");
         }).catch(err => {
-            console.error("Gagal start kamera:", err);
             InfoScanner("Gagal akses kamera. Periksa izin browser!", "error");
-            tambahLog("[CAM-ERR] Izin kamera ditolak atau tidak ada perangkat.", "error");
         });
     }
 
@@ -368,9 +363,9 @@
         mqttClient.onMessageArrived = (message) => {
             try {
                 const payload = JSON.parse(message.payloadString);
-                bebanLiveKg = parseFloat(payload.berat_kg);
+                bebanLiveVal = parseFloat(payload.berat_kg || 0);
                 
-                document.getElementById('live-berat-val').innerText = bebanLiveKg >= 1 ? bebanLiveKg.toFixed(2) : Math.round(bebanLiveKg * 1000);
+                document.getElementById('live-berat-val').innerText = bebanLiveVal >= 1 ? bebanLiveVal.toFixed(2) : Math.round(bebanLiveVal * 1000);
                 
                 if (payload.uid_rfid && payload.uid_rfid.length > 3) {
                     const rfidTag = payload.uid_rfid.trim().toUpperCase();
@@ -380,8 +375,8 @@
                     document.getElementById('text-tap-detected').innerText = rfidTag;
                     document.getElementById('card-tap-alert').classList.remove('hidden');
 
-                    if (bebanLiveKg > 0) {
-                        prosesOtomatisRFID(rfidTag, bebanLiveKg);
+                    if (bebanLiveVal > 0) {
+                        prosesOtomatisRFID(rfidTag, bebanLiveVal);
                     }
                 }
             } catch(e) {}
@@ -402,7 +397,7 @@
     }
 
     let isProcessingRFID = false; 
-    function prosesOtomatisRFID(rfid_tag, beratKg) {
+    function prosesOtomatisRFID(rfid_tag, beratVal) {
         if (isProcessingRFID) return;
         isProcessingRFID = true;
         tambahLog(`[RFID-TAP] Kartu: ${rfid_tag}`);
@@ -412,21 +407,20 @@
                 snapshot.forEach((childSnap) => {
                     const fuid = childSnap.key; 
                     const data = childSnap.val();
-                    const beratBaru = (data.total_berat_kg || 0) + beratKg;
-                    const nilaiPoin = beratKg;
+                    const beratBaru = (data.total_berat_kg || 0) + beratVal;
+                    const nilaiPoin = beratVal;
 
-                    // SALDO POIN DISAMAKAN PERSIS DENGAN TOTAL BERAT
                     db.ref('users/' + fuid).update({
                         total_berat_kg: beratBaru,
                         saldo_poin: beratBaru
                     });
                     db.ref('transaksi/' + fuid).push({
-                        berat_kg: beratKg, poin: nilaiPoin, timestamp: Date.now(), metode: "RFID_AUTO"
+                        berat_kg: beratVal, poin: nilaiPoin, timestamp: Date.now(), metode: "RFID_AUTO"
                     });
                     tambahLog(`[SUKSES] RFID ${data.nama} (+${nilaiPoin.toFixed(2)} Pts)`, "success");
                 });
             } else {
-                tambahLog(`[WARNING] Kartu RFID (${rfid_tag}) belum ditautkan ke akun user.`, "warning");
+                tambahLog(`[WARNING] Kartu RFID (${rfid_tag}) belum terdaftar.`, "warning");
             }
         });
         setTimeout(() => { isProcessingRFID = false; }, 4000); 
@@ -494,7 +488,7 @@
 
     function pantauDatabase() {
         db.ref('users').on('value', (snapshot) => {
-            let tAnggota = 0, tSampahKg = 0;
+            let tAnggota = 0, tSampahTotal = 0;
             const tbody = document.getElementById('tabel-anggota');
             tbody.innerHTML = "";
             
@@ -504,18 +498,15 @@
                     const fuid = childSnap.key;
                     if (user.role !== 'admin') {
                         tAnggota++; 
-                        let beratUserKg = user.total_berat_kg || 0;
-                        tSampahKg += beratUserKg; 
-                        
-                        // KARENA POIN DISET SAMA DENGAN BERAT, NILAINYA 100% IDENTIK
-                        let poinUser = beratUserKg;
+                        let beratUser = user.total_berat_kg || 0;
+                        tSampahTotal += beratUser; 
 
                         let rfidDisplay = user.rfid_uid 
                             ? `<span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-mono font-bold">${user.rfid_uid}</span> <button onclick="resetKartuAdmin('${fuid}', '${user.nama}')" class="text-rose-500 hover:text-rose-700 text-xs ml-1" title="Reset Kartu"><i class="fa-solid fa-rotate-left"></i></button>` 
                             : `<span class="text-xs text-rose-500 italic">Belum ada kartu</span>`;
 
-                        let tampilBeratUser = beratUserKg >= 1 ? beratUserKg.toFixed(2) : Math.round(beratUserKg * 1000);
-                        let tampilPoinUser = poinUser >= 1 ? poinUser.toFixed(2) : Math.round(poinUser * 1000);
+                        let tampilBerat = beratUser >= 1 ? beratUser.toFixed(2) : Math.round(beratUser * 1000);
+                        let tampilPoin = beratUser >= 1 ? beratUser.toFixed(2) : Math.round(beratUser * 1000);
 
                         tbody.innerHTML += `
                             <tr class="hover:bg-slate-50 transition-colors">
@@ -532,16 +523,16 @@
                                     </div>
                                 </td>
                                 <td class="p-4 text-right align-top">
-                                    <div class="font-bold text-emerald-600">${tampilBeratUser} kg</div>
-                                    <div class="text-xs font-semibold text-amber-500 mt-0.5">${tampilPoinUser} Pts</div>
+                                    <div class="font-bold text-emerald-600">${tampilBerat} g</div>
+                                    <div class="text-xs font-semibold text-amber-500 mt-0.5">${tampilPoin} Pts</div>
                                 </td>
                             </tr>
                         `;
                     }
                 });
                 document.getElementById('tot-anggota').innerText = tAnggota;
-                document.getElementById('tot-sampah').innerText = (tSampahKg >= 1 ? tSampahKg.toFixed(2) : Math.round(tSampahKg * 1000)) + " kg";
-                document.getElementById('tot-poin').innerText = (tSampahKg >= 1 ? tSampahKg.toFixed(2) : Math.round(tSampahKg * 1000)) + " Pts";
+                document.getElementById('tot-sampah').innerText = (tSampahTotal >= 1 ? tSampahTotal.toFixed(2) : Math.round(tSampahTotal * 1000)) + " g";
+                document.getElementById('tot-poin').innerText = (tSampahTotal >= 1 ? tSampahTotal.toFixed(2) : Math.round(tSampahTotal * 1000)) + " Pts";
             } else {
                 tbody.innerHTML = `<tr><td class="p-6 text-center text-slate-400 text-xs">Belum ada data anggota</td></tr>`;
             }
@@ -550,9 +541,9 @@
 
     let lastLogTime = 0;
     function tambahLog(pesan, tipe = "normal") {
-        const sekrang = Date.now();
-        if (sekrang - lastLogTime < 300) return; 
-        lastLogTime = sekrang;
+        const sekarang = Date.now();
+        if (sekarang - lastLogTime < 300) return; 
+        lastLogTime = sekarang;
 
         const box = document.getElementById('log-box');
         const waktu = new Date().toLocaleTimeString('id-ID', {hour12:false});

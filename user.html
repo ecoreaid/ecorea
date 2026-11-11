@@ -120,7 +120,7 @@
             <div class="glass-card p-5 text-center flex flex-col justify-center items-center">
                 <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center mb-2"><i class="fa-solid fa-weight-hanging"></i></div>
                 <p class="text-[11px] font-bold text-slate-400 uppercase mb-1">Total Setoran</p>
-                <h3 class="text-2xl font-bold text-blue-600" id="user-berat">0 kg</h3>
+                <h3 class="text-xl font-bold text-blue-600" id="user-berat">0 g</h3>
             </div>
         </div>
 
@@ -331,7 +331,7 @@
         if (!currentUserId) return;
 
         if (saldoPoinSekarang < hargaPoin) {
-            alert(`❌ Saldo poin Anda tidak cukup!\nSaldo Anda: ${saldoPoinSekarang.toFixed(2)} Pts\nDibutuhkan: ${hargaPoin} Pts`);
+            alert(`❌ Saldo poin Anda tidak cukup!\nSaldo Anda: ${saldoPoinSekarang >= 1 ? saldoPoinSekarang.toFixed(2) : Math.round(saldoPoinSekarang * 1000)} Pts\nDibutuhkan: ${hargaPoin} Pts`);
             return;
         }
 
@@ -340,7 +340,7 @@
 
             db.ref('users/' + currentUserId).update({
                 saldo_poin: sisaPoinBaru,
-                total_berat_kg: sisaPoinBaru // Sinkronisasi berat dengan poin sisa
+                total_berat_kg: sisaPoinBaru
             }).then(() => {
                 db.ref('transaksi/' + currentUserId).push({
                     berat_kg: 0,
@@ -375,12 +375,12 @@
                     const data = snap.val();
                     let beratVal = data.total_berat_kg || 0;
                     
-                    // POIN DISET 100% SAMA DENGAN TOTAL BERAT
                     saldoPoinSekarang = beratVal; 
                     
+                    let tampilVal = beratVal >= 1 ? beratVal.toFixed(2) : Math.round(beratVal * 1000);
                     document.getElementById('user-nama').innerText = data.nama;
-                    document.getElementById('user-poin').innerText = (beratVal >= 1 ? beratVal.toFixed(2) : Math.round(beratVal * 1000)) + " Pts";
-                    document.getElementById('user-berat').innerText = (beratVal >= 1 ? beratVal.toFixed(2) : Math.round(beratVal * 1000)) + " kg";
+                    document.getElementById('user-poin').innerText = tampilVal + " Pts";
+                    document.getElementById('user-berat').innerText = tampilVal + " g";
                     
                     const cardDisplay = document.getElementById('info-rfid-card');
                     const badge = document.getElementById('status-kartu-badge');
@@ -420,7 +420,7 @@
                             rows = `
                                 <tr class="hover:bg-slate-50">
                                     <td class="p-4">
-                                        <div class="font-bold text-slate-700">${beratTx} kg</div>
+                                        <div class="font-bold text-slate-700">+${beratTx} g</div>
                                         <div class="text-xs text-slate-400 mt-1"><i class="fa-regular fa-calendar mr-1"></i> ${time}</div>
                                     </td>
                                     <td class="p-4 text-right"><div class="font-bold text-emerald-500">+${poinTx} Pts</div></td>
